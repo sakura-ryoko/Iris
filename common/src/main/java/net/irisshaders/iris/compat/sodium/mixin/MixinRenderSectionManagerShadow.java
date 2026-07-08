@@ -215,6 +215,13 @@ public abstract class MixinRenderSectionManagerShadow implements ShadowRenderLis
 		}
 	}
 
+	@Inject(method = "updateChunks", at = @At("HEAD"), cancellable = true, remap = false)
+	private void skipAsyncCullDuringShadow2(Viewport viewport, boolean updateImmediately, CallbackInfo ci) {
+		if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
+			ci.cancel();
+		}
+	}
+
 	@Inject(method = "cleanupAndFlip", at = @At("HEAD"), cancellable = true, remap = false)
 	private void skipCleanupAndFlipDuringShadow(CallbackInfo ci) {
 		if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
@@ -234,27 +241,6 @@ public abstract class MixinRenderSectionManagerShadow implements ShadowRenderLis
 		if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
 			ci.cancel();
 		}
-	}
-
-	@WrapMethod(method = "finalizeRenderLists", remap = false)
-	private void finalizeShadowRenderLists(Camera camera, Viewport viewport, FogParameters fogParameters, boolean updateChunksImmediately, Operation<Void> original) {
-		if (!ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
-			original.call(camera, viewport, fogParameters, updateChunksImmediately);
-			return;
-		}
-
-		this.iris$swapToShadowRenderLists();
-
-		if (this.shadowNeedsRenderListUpdate) {
-			this.renderOutOfGraph(viewport, fogParameters);
-			this.shadowRenderLists = this.renderLists;
-			this.shadowTaskLists = this.taskLists;
-			this.shadowNeedsRenderListUpdate = false;
-		}
-
-		this.needsRenderListUpdate = false;
-		this.needsGraphUpdate = false;
-		this.cameraChanged = false;
 	}
 
 	@Redirect(method = {
