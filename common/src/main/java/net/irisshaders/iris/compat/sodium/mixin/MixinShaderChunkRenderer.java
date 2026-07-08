@@ -1,12 +1,14 @@
 package net.irisshaders.iris.compat.sodium.mixin;
 
 import com.llamalad7.mixinextras.sugar.Local;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.opengl.GlDevice;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuSampler;
+import net.caffeinemc.mods.sodium.client.gl.buffer.GlTexelBuffer;
 import net.caffeinemc.mods.sodium.client.gl.shader.GlProgram;
 import net.caffeinemc.mods.sodium.client.render.chunk.ShaderChunkRenderer;
 import net.caffeinemc.mods.sodium.client.render.chunk.shader.ChunkShaderInterface;
@@ -33,7 +35,7 @@ public abstract class MixinShaderChunkRenderer {
 	protected abstract GlProgram<ChunkShaderInterface> compileProgram(ChunkShaderOptions options);
 
 	@Inject(method = "begin", at = @At("HEAD"))
-	private void iris$resetState(TerrainRenderPass pass, FogParameters parameters, GpuSampler terrainSampler, CallbackInfo ci) {
+	private void iris$resetState(TerrainRenderPass pass, FogParameters parameters, GpuSampler terrainSampler, GpuBufferSlice uniformData, GlTexelBuffer sectionTimeInfo, CallbackInfo ci) {
 		BlendModeOverride.restore();
 	}
 
@@ -56,7 +58,7 @@ public abstract class MixinShaderChunkRenderer {
 	}
 
 	@Inject(method = "begin", at = @At(value = "HEAD"))
-	private void redirectViewport(TerrainRenderPass pass, FogParameters parameters, GpuSampler terrainSampler, CallbackInfo ci) {
+	private void redirectViewport(TerrainRenderPass pass, FogParameters parameters, GpuSampler terrainSampler, GpuBufferSlice uniformData, GlTexelBuffer sectionTimeInfo, CallbackInfo ci) {
 		if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
 			GlStateManager._viewport(0, 0, ShadowRenderer.RESOLUTION, ShadowRenderer.RESOLUTION);
 		}

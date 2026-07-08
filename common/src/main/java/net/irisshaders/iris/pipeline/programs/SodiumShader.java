@@ -1,27 +1,25 @@
 package net.irisshaders.iris.pipeline.programs;
 
 import com.google.common.collect.ImmutableSet;
-import com.mojang.blaze3d.opengl.GlBuffer;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.opengl.GlSampler;
 import com.mojang.blaze3d.opengl.GlStateManager;
-import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.AddressMode;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import net.caffeinemc.mods.sodium.client.gl.device.GLRenderDevice;
+import net.caffeinemc.mods.sodium.client.gl.buffer.GlTexelBuffer;
 import net.caffeinemc.mods.sodium.client.gl.shader.uniform.GlUniformBlock;
-import net.caffeinemc.mods.sodium.client.gl.shader.uniform.GlUniformBool;
-import net.caffeinemc.mods.sodium.client.gl.shader.uniform.GlUniformFloat;
-import net.caffeinemc.mods.sodium.client.gl.shader.uniform.GlUniformFloat2v;
 import net.caffeinemc.mods.sodium.client.gl.shader.uniform.GlUniformFloat3v;
 import net.caffeinemc.mods.sodium.client.gl.shader.uniform.GlUniformInt;
-import net.caffeinemc.mods.sodium.client.gl.shader.uniform.GlUniformMatrix4f;
+import net.caffeinemc.mods.sodium.client.gl.shader.uniform.GlUniformUnsignedInt;
+import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
 import net.caffeinemc.mods.sodium.client.render.chunk.shader.ChunkShaderInterface;
+import net.caffeinemc.mods.sodium.client.render.chunk.shader.ChunkShaderTextureSlot;
 import net.caffeinemc.mods.sodium.client.render.chunk.shader.ShaderBindingContext;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
-import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.impl.CompactChunkVertex;
+import net.caffeinemc.mods.sodium.client.render.viewport.CameraTransform;
 import net.caffeinemc.mods.sodium.client.util.FogParameters;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.features.FeatureFlags;
@@ -33,7 +31,6 @@ import net.irisshaders.iris.gl.program.ProgramImages;
 import net.irisshaders.iris.gl.program.ProgramSamplers;
 import net.irisshaders.iris.gl.program.ProgramUniforms;
 import net.irisshaders.iris.gl.state.FogMode;
-import net.irisshaders.iris.mixin.texture.TextureAtlasAccessor;
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.samplers.IrisSamplers;
 import net.irisshaders.iris.shadows.ShadowRenderer;
@@ -44,11 +41,8 @@ import net.irisshaders.iris.uniforms.custom.CustomUniforms;
 import net.irisshaders.iris.vertices.ImmediateState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.TextureFilteringMethod;
-import net.minecraft.client.renderer.texture.TextureAtlas;
-import org.joml.Matrix3f;
-import org.joml.Matrix4f;
-import org.joml.Matrix4fc;
 import org.lwjgl.opengl.GL20C;
+import org.lwjgl.opengl.GL32C;
 import org.lwjgl.opengl.GL33C;
 import org.lwjgl.opengl.GL46C;
 
@@ -59,13 +53,6 @@ import java.util.function.Supplier;
 public class SodiumShader implements ChunkShaderInterface {
 	private static final int SUB_TEXEL_PRECISION_BITS = 5;
 
-	private final GlUniformMatrix4f uniformModelViewMatrix;
-	private final GlUniformMatrix4f uniformModelViewMatrixInv;
-	private final GlUniformMatrix4f uniformProjectionMatrix;
-	private final GlUniformMatrix4f uniformProjectionMatrixInv;
-	private final GlUniformMatrix3f uniformNormalMatrix;
-	private final GlUniformFloat3v uniformRegionOffset;
-	private final GlUniformFloat2v uniformTexCoordShrink;
 	private final ProgramImages images;
 	private final ProgramSamplers samplers;
 	private final ProgramUniforms uniforms;
@@ -75,11 +62,12 @@ public class SodiumShader implements ChunkShaderInterface {
 	private final float alphaTest;
 	private final boolean containsTessellation;
 	private final boolean anisotropySupported;
+	private final GlUniformInt sectionDataUniform;
 	private boolean isShadowPass;
-	private final GlUniformFloat2v uniformTexelSize;
-	private final GlUniformInt uniformCurrentTime;
-
-	private final GlUniformBlock uniformChunkData;
+	private final GlUniformBlock uniformGlobals;
+	private final GlUniformFloat3v regionUniform;
+	private final GlUniformInt timeUniform;
+	private final GlUniformUnsignedInt idUniform;
 
 	public SodiumShader(IrisRenderingPipeline pipeline, SodiumPrograms.Pass pass, ShaderBindingContext context,
 						int handle, BlendModeOverride blendModeOverride,
@@ -87,18 +75,14 @@ public class SodiumShader implements ChunkShaderInterface {
 						CustomUniforms customUniforms, Supplier<ImmutableSet<Integer>> flipState, float alphaTest,
 						boolean containsTessellation) {
 		this.anisotropySupported = pipeline.hasFeature(FeatureFlags.TEXTURE_FILTERING);
-		this.uniformModelViewMatrix = context.bindUniformOptional("iris_ModelViewMatrix", GlUniformMatrix4f::new);
-		this.uniformModelViewMatrixInv = context.bindUniformOptional("iris_ModelViewMatrixInverse", GlUniformMatrix4f::new);
-		this.uniformNormalMatrix = context.bindUniformOptional("iris_NormalMatrix", GlUniformMatrix3f::new);
-		this.uniformProjectionMatrix = context.bindUniformOptional("iris_ProjectionMatrix", GlUniformMatrix4f::new);
-		this.uniformProjectionMatrixInv = context.bindUniformOptional("iris_ProjectionMatrixInv", GlUniformMatrix4f::new);
-		this.uniformRegionOffset = context.bindUniformOptional("u_RegionOffset", GlUniformFloat3v::new);
-		this.uniformTexCoordShrink = context.bindUniformOptional("u_TexCoordShrink", GlUniformFloat2v::new);
 
-		this.uniformCurrentTime = context.bindUniformOptional("iris_CurrentTime", GlUniformInt::new);
-		this.uniformTexelSize = context.bindUniformOptional("iris_TexelSize", GlUniformFloat2v::new);
+		this.regionUniform = context.bindUniform("u_RegionOffset", GlUniformFloat3v::new);
+		this.timeUniform = context.bindUniformOptional("u_CurrentTime", GlUniformInt::new);
+		this.idUniform = context.bindUniformOptional("u_RegionID", GlUniformUnsignedInt::new);
 
-		this.uniformChunkData = context.bindUniformBlockOptional("iris_ChunkData", 0);
+		this.sectionDataUniform = context.bindUniformOptional("u_SectionTimeInfo", GlUniformInt::new);
+
+		this.uniformGlobals = context.bindUniformBlock("u_Globals", 0);
 
 		this.alphaTest = alphaTest;
 		this.containsTessellation = containsTessellation;
@@ -140,51 +124,19 @@ public class SodiumShader implements ChunkShaderInterface {
 	}
 
 	@Override
-	public void setRegionOffset(float x, float y, float z) {
-		if (uniformRegionOffset != null) {
-			uniformRegionOffset.set(x, y, z);
-		}
-	}
+	public void setupState(TerrainRenderPass pass, FogParameters fogParameters, GpuSampler gpuSampler, GpuBufferSlice uniformData, GlTexelBuffer glTexelBuffer) {
+		int maxAnisotropy = Minecraft.getInstance().options.textureFiltering().get() == TextureFilteringMethod.ANISOTROPIC
+			? Minecraft.getInstance().options.maxAnisotropyValue()
+			: 1;
+		bindTextures(pass.getAtlas(), (GlSampler) IrisSamplers.getTerrainCache(maxAnisotropy), glTexelBuffer); // oh no
 
-	@Override
-	public void setChunkData(net.caffeinemc.mods.sodium.client.gl.buffer.GlBuffer data, int time) {
-		if (uniformChunkData != null) uniformChunkData.bindBuffer(data);
-		if (uniformCurrentTime != null) uniformCurrentTime.set(time);
-	}
-
-	@Override
-	public void setModelViewMatrix(Matrix4fc matrix) {
-		if (uniformModelViewMatrix != null) {
-			uniformModelViewMatrix.set(matrix);
+		if (sectionDataUniform != null) {
+			GlStateManager._activeTexture(GL32C.GL_TEXTURE0 + ChunkShaderTextureSlot.SECTION.ordinal());
+			GL46C.glBindTexture(GL46C.GL_TEXTURE_BUFFER, glTexelBuffer.handle());
+			sectionDataUniform.setInt(ChunkShaderTextureSlot.SECTION.ordinal());
 		}
 
-		Matrix4f invertedMatrix = matrix.invert(new Matrix4f());
-
-		if (uniformModelViewMatrixInv != null) {
-			uniformModelViewMatrixInv.set(invertedMatrix);
-		}
-
-		if (uniformNormalMatrix != null) {
-			Matrix3f normalMatrix = invertedMatrix.transpose3x3(new Matrix3f());
-			uniformNormalMatrix.set(normalMatrix);
-		}
-	}
-
-	@Override
-	public void setProjectionMatrix(Matrix4fc matrix) {
-		if (uniformProjectionMatrix != null) {
-			uniformProjectionMatrix.set(matrix);
-		}
-
-		if (uniformProjectionMatrixInv != null) {
-			Matrix4f invertedMatrix = matrix.invert(new Matrix4f());
-
-			uniformProjectionMatrixInv.set(invertedMatrix);
-		}
-	}
-
-	@Override
-	public void setupState(TerrainRenderPass pass, FogParameters fogParameters, GpuSampler gpuSampler) {
+		this.uniformGlobals.bindBufferRange(uniformData);
 		DepthColorStorage.unlockDepthColor();
 
 		applyBlendModes();
@@ -193,40 +145,6 @@ public class SodiumShader implements ChunkShaderInterface {
 		}
 		updateUniforms();
 		images.update();
-
-
-		if (isShadowPass) {
-			GlStateManager._disableCull();
-		}
-
-		var textureAtlas = Minecraft.getInstance()
-			.getTextureManager()
-			.getTexture(TextureAtlas.LOCATION_BLOCKS);
-
-		// There is a limited amount of sub-texel precision when using hardware texture sampling. The mapped texture
-		// area must be "shrunk" by at least one sub-texel to avoid bleed between textures in the atlas. And since we
-		// offset texture coordinates in the vertex format by one texel, we also need to undo that here.
-		double subTexelPrecision = (1 << GLRenderDevice.INSTANCE.getSubTexelPrecisionBits());
-		double subTexelOffset = 1.0f / CompactChunkVertex.TEXTURE_MAX_VALUE;
-
-		if (this.uniformTexCoordShrink != null) {
-			this.uniformTexCoordShrink.set(
-				(float) (subTexelOffset - (((1.0D / ((TextureAtlasAccessor) textureAtlas).callGetWidth()) / subTexelPrecision))),
-				(float) (subTexelOffset - (((1.0D / ((TextureAtlasAccessor) textureAtlas).callGetHeight()) / subTexelPrecision)))
-			);
-		}
-
-		if (uniformTexelSize != null) {
-			this.uniformTexelSize.set(
-				(float) (1.0d / textureAtlas.getTexture().getWidth(0)),
-				(float) (1.0d / textureAtlas.getTexture().getHeight(0))
-			);
-		}
-
-		int maxAnisotropy = Minecraft.getInstance().options.textureFiltering().get() == TextureFilteringMethod.ANISOTROPIC
-			? Minecraft.getInstance().options.maxAnisotropyValue()
-			: 1;
-		bindTextures(pass.getAtlas(), (GlSampler) IrisSamplers.getTerrainCache(maxAnisotropy)); // oh no
 
 		if (containsTessellation) {
 			ImmediateState.usingTessellation = true;
@@ -237,7 +155,7 @@ public class SodiumShader implements ChunkShaderInterface {
 		}
 	}
 
-	private void bindTextures(GpuTextureView atlas, GlSampler sampler) {
+	private void bindTextures(GpuTextureView atlas, GlSampler sampler, GlTexelBuffer glTexelBuffer) {
 		IrisRenderSystem.bindTextureToUnit(GL20C.GL_TEXTURE_2D, 0, atlas.texture().iris$getGlId());
 		GlStateManager._activeTexture(GL20C.GL_TEXTURE0);
 		GlStateManager._texParameter(3553, 33084, atlas.baseMipLevel());
@@ -270,5 +188,20 @@ public class SodiumShader implements ChunkShaderInterface {
 		ProgramSamplers.clearActiveSamplers();
 		BlendModeOverride.restore();
 		ImmediateState.usingTessellation = false;
+	}
+
+	private static float getCameraTranslation(int chunkBlockPos, int cameraBlockPos, float cameraPos) {
+		return (chunkBlockPos - cameraBlockPos) - cameraPos;
+	}
+
+	@Override
+	public void setRegionData(CameraTransform camera, RenderRegion region) {
+		float x = getCameraTranslation(region.getOriginX(), camera.intX, camera.fracX);
+		float y = getCameraTranslation(region.getOriginY(), camera.intY, camera.fracY);
+		float z = getCameraTranslation(region.getOriginZ(), camera.intZ, camera.fracZ);
+
+		this.regionUniform.set(x, y, z);
+		if (this.timeUniform != null) this.timeUniform.set(Math.toIntExact(System.currentTimeMillis() - region.getCreationTime()));
+		if (this.idUniform != null) this.idUniform.set(region.getId());
 	}
 }

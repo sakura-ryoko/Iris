@@ -8,6 +8,7 @@ import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.vertex.PoseStack;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import net.caffeinemc.mods.sodium.client.render.SodiumWorldRenderer;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderMatrices;
 import net.caffeinemc.mods.sodium.client.util.SodiumChunkSection;
 import net.caffeinemc.mods.sodium.client.world.LevelRendererExtension;
@@ -17,6 +18,7 @@ import net.irisshaders.iris.gl.GLDebug;
 import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.gui.option.IrisVideoSettings;
 import net.irisshaders.iris.mixin.LevelRendererAccessor;
+import net.irisshaders.iris.mixinterface.ShadowRenderListAccess;
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.pipeline.WorldRenderingPhase;
 import net.irisshaders.iris.shaderpack.programs.ProgramSource;
@@ -469,7 +471,10 @@ public class ShadowRenderer {
 		// TODO: Only schedule a terrain update if the sun / moon is moving, or the shadow map camera moved.
 		// We have to ensure that we don't regenerate clouds every frame, since that's what needsUpdate ends up doing.
 		// This took up to 10% of the frame time before we applied this fix! That's really bad!
-
+		SodiumWorldRenderer sodiumWorldRenderer = ((LevelRendererExtension) levelRenderer).sodium$getWorldRenderer();
+		if (sodiumWorldRenderer instanceof ShadowRenderListAccess shadowRenderListAccess) {
+			shadowRenderListAccess.iris$beginShadowRenderListScope();
+		}
 		// TODO IMS 24w35a determine clouds
 		((LevelRenderer) levelRenderer).needsUpdate();
 
@@ -606,6 +611,10 @@ public class ShadowRenderer {
 
 		if (levelRenderer instanceof CullingDataCache) {
 			((CullingDataCache) levelRenderer).restoreState();
+		}
+
+		if (sodiumWorldRenderer instanceof ShadowRenderListAccess shadowRenderListAccess) {
+			shadowRenderListAccess.iris$endShadowRenderListScope();
 		}
 
 		pipeline.removePhaseIfNeeded();

@@ -5,7 +5,11 @@ import net.caffeinemc.mods.sodium.client.util.FogParameters;
 import net.caffeinemc.mods.sodium.client.util.FogStorage;
 import net.irisshaders.iris.gl.state.FogMode;
 import net.irisshaders.iris.gl.uniform.DynamicUniformHolder;
+import net.irisshaders.iris.gl.uniform.UniformHolder;
+import net.irisshaders.iris.shaderpack.properties.PackDirectives;
 import net.minecraft.client.Minecraft;
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
 import org.joml.Vector4f;
 
 import static net.irisshaders.iris.gl.uniform.UniformUpdateFrequency.PER_FRAME;
@@ -43,6 +47,20 @@ public class IrisInternalUniforms {
 
 		// Optifine compatibility
 		uniforms.uniform1f("alphaTestRef", CapturedRenderingState.INSTANCE::getCurrentAlphaTest, notifier -> {
+		});
+	}
+
+	public static void addOtherUniforms(UniformHolder uniforms, FrameUpdateNotifier updateNotifier, PackDirectives directives) {
+		uniforms.uniformMatrix3(PER_FRAME, "iris_DefaultNormalMat", () -> {
+			return CapturedRenderingState.INSTANCE.getGbufferModelView().invert(new Matrix4f()).transpose3x3(new Matrix3f());
+		});
+
+		uniforms.uniformMatrix(PER_FRAME, "iris_DefaultProjectionMatrixInverse", () -> {
+			return CapturedRenderingState.INSTANCE.getGbufferProjection().invert(new Matrix4f());
+		});
+
+		uniforms.uniformMatrix(PER_FRAME, "iris_DefaultModelViewMatrixInverse", () -> {
+			return CapturedRenderingState.INSTANCE.getGbufferModelView().invert(new Matrix4f());
 		});
 	}
 }

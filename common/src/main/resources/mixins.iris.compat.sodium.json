@@ -25,7 +25,8 @@
     "MixinRenderSectionManagerShadow",
     "MixinShaderChunkRenderer",
     "MixinSodiumGameOptions",
-    "MixinSodiumWorldRenderer"
+    "MixinSodiumWorldRenderer",
+    "MixinUniformData"
   ],
   "injectors": {
     "defaultRequire": 1

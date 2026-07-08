@@ -13,13 +13,15 @@ public class SodiumParameters extends Parameters {
 	// DO NOT include this field in hashCode or equals, it's mutable!
 	// (See use of setAlphaFor in TransformPatcher)
 	public final AlphaTest alpha;
+	public final boolean shadow;
 
 	public SodiumParameters(Patch patch,
 							Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap,
-							AlphaTest alpha) {
+							AlphaTest alpha, boolean shadow) {
 		super(patch, textureMap);
 
 		this.alpha = alpha;
+		this.shadow = shadow;
 	}
 
 	@Override
