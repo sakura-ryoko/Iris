@@ -16,6 +16,8 @@ import net.irisshaders.iris.pipeline.transform.parameter.SodiumParameters;
 public class SodiumCoreTransformer {
 	public static final AutoHintedMatcher<ExternalDeclaration> modelViewMatrix = new AutoHintedMatcher<>(
 		"uniform mat4 modelViewMatrix;", ParseShape.EXTERNAL_DECLARATION);
+	public static final AutoHintedMatcher<ExternalDeclaration> normalMatrix = new AutoHintedMatcher<>(
+		"uniform mat4 normalMatrix;", ParseShape.EXTERNAL_DECLARATION);
 	public static final AutoHintedMatcher<ExternalDeclaration> projectionMatrix = new AutoHintedMatcher<>(
 		"uniform mat4 projectionMatrix;", ParseShape.EXTERNAL_DECLARATION);
 	public static void transform(
@@ -23,14 +25,17 @@ public class SodiumCoreTransformer {
 		TranslationUnit tree,
 		Root root,
 		SodiumParameters parameters) {
+		String objectType = parameters.shadow ? "Shadow" : "Default";
+
 		root.rename("alphaTestRef", "iris_currentAlphaTest");
 		root.processMatches(t, modelViewMatrix, ASTNode::detachAndDelete);
 		root.rename("modelViewMatrix", "u_ModelViewMatrix");
-		root.rename("modelViewMatrixInverse", "iris_DefaultModelViewMatrixInverse");
+		root.rename("modelViewMatrixInverse", "iris_" + objectType + "ModelViewMatrixInverse");
 		root.processMatches(t, projectionMatrix, ASTNode::detachAndDelete);
+		root.processMatches(t, normalMatrix, ASTNode::detachAndDelete);
 		root.rename("projectionMatrix", "u_ProjectionMatrix");
-		root.rename("projectionMatrixInverse", "iris_DefaultProjectionMatrixInverse");
-		root.rename("normalMatrix", "iris_DefaultNormalMat");
+		root.rename("projectionMatrixInverse", "iris_" + objectType + "ProjectionMatrixInverse");
+		root.rename("normalMatrix", "mat3(u_ModelViewMatrix)");
 		root.rename("chunkOffset", "u_RegionOffset");
 		if (parameters.type == PatchShaderType.VERTEX) {
 			boolean needsNormal = root.identifierIndex.has("vaNormal") || root.identifierIndex.has("at_tangent");
