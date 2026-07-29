@@ -151,6 +151,7 @@ public class SodiumShader implements ChunkShaderInterface {
 		}
 
 		if (ShadowRenderer.ACTIVE) {
+			GlStateManager._disableCull();
 			GlStateManager._viewport(0, 0, ShadowRenderer.RESOLUTION, ShadowRenderer.RESOLUTION);
 		}
 	}
