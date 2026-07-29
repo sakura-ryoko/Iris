@@ -178,6 +178,24 @@ public class Iris {
 			Iris.loadShaderpack();
 		}
 
+		if (Iris.getIrisConfig().areDebugOptionsEnabled()) {
+			if (reloadKeybind.consumeClick()) {
+				try {
+					reload();
+
+					if (Minecraft.getInstance().player != null) {
+						Minecraft.getInstance().player.sendSystemMessage(Component.translatable("iris.shaders.reloaded"));
+					}
+
+				} catch (Exception e) {
+					logger.error("Error while reloading Shaders for Iris!", e);
+
+					if (Minecraft.getInstance().player != null) {
+						Minecraft.getInstance().player.sendSystemMessage(Component.translatable("iris.shaders.reloaded.failure", Throwables.getRootCause(e).getMessage()).withStyle(ChatFormatting.RED));
+					}
+				}
+			}
+		}
 		if (toggleShadersKeybind.consumeClick()) {
 			try {
 				toggleShaders(minecraft, !irisConfig.areShadersEnabled());
